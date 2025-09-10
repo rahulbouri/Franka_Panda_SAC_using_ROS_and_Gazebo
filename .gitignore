@@ -1,0 +1,35 @@
+# Python virtual environment
+noetic/
+venv/
+env/
+.venv/
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ROS build artifacts
+simple_manipulator_ws/build/
+simple_manipulator_ws/devel/
+simple_manipulator_ws/install/
+simple_manipulator_ws/logs/
+
+# Log files
+*.log
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
