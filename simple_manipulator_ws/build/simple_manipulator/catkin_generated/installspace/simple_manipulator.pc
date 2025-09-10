@@ -1,8 +1,0 @@
-prefix=/home/bouri/roboset/simple_manipulator_ws/install
-
-Name: simple_manipulator
-Description: Description of simple_manipulator
-Version: 1.0.0
-Cflags: 
-Libs: -L${prefix}/lib 
-Requires: roscpp rospy std_msgs sensor_msgs geometry_msgs gazebo_ros gazebo_ros_control joint_state_publisher robot_state_publisher tf
