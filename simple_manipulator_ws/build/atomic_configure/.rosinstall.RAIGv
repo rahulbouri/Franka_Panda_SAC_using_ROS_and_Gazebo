@@ -1,0 +1,2 @@
+- setup-file:
+    local-name: /home/bouri/roboset/simple_manipulator_ws/devel/setup.sh
