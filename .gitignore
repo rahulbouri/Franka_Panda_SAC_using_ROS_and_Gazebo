@@ -24,10 +24,14 @@ MANIFEST
 # Virtual environments
 rl_env/
 venv/
-env/
 ENV/
 env.bak/
 venv.bak/
+noetic/
+
+# But allow our env/ directory for environment code
+!env/
+!env/*.py
 
 # PyTorch
 *.pth
