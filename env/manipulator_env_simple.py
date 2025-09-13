@@ -260,10 +260,8 @@ class ManipulatorEnvironmentSimple:
         
         logger.info(f"🎯 Target position: {target_position}")
         
-        # Set target pose
-        self.target_pose.position.x = target_position[0]
-        self.target_pose.position.y = target_position[1] 
-        self.target_pose.position.z = target_position[2]
+        # Spawn/update target object in Gazebo
+        self._spawn_target_object(target_position)
         
         # Randomize initial joint positions
         initial_joints = self._generate_random_joint_configuration()
@@ -273,7 +271,7 @@ class ManipulatorEnvironmentSimple:
         self._set_joint_configuration(initial_joints)
         
         # Wait for state to stabilize
-        rospy.sleep(0.5)
+        rospy.sleep(1.0)
         
         # Get initial observation
         observation = self._get_observation()
@@ -337,18 +335,20 @@ class ManipulatorEnvironmentSimple:
         """Generate random target position within workspace bounds"""
         logger.debug("🎲 Generating random target position")
         
-        x = np.random.uniform(
-            self.config.workspace_bounds['x'][0],
-            self.config.workspace_bounds['x'][1]
-        )
-        y = np.random.uniform(
-            self.config.workspace_bounds['y'][0], 
-            self.config.workspace_bounds['y'][1]
-        )
-        z = np.random.uniform(
-            self.config.workspace_bounds['z'][0],
-            self.config.workspace_bounds['z'][1]
-        )
+        # Use same bounds as episode_randomizer.py
+        # Table center at z=0.375, table height=0.75, so table top is at z=0.75
+        # Table size is 0.8x0.8, so bounds are x: 0.2 to 1.0, y: -0.4 to 0.4
+        table_top_z = 0.75
+        table_center_x = 0.6
+        table_center_y = 0.0
+        table_half_size = 0.4  # half of 0.8
+        can_radius = 0.033  # radius of coke can
+        
+        # Place can on table surface with proper margins to avoid edge placement
+        margin = can_radius + 0.05  # can radius + safety margin
+        x = np.random.uniform(table_center_x - table_half_size + margin, table_center_x + table_half_size - margin)
+        y = np.random.uniform(table_center_y - table_half_size + margin, table_center_y + table_half_size - margin)
+        z = table_top_z + can_radius  # table top + can radius to place on surface
         
         target = [x, y, z]
         logger.debug(f"🎯 Random target generated: {target}")
@@ -358,19 +358,15 @@ class ManipulatorEnvironmentSimple:
         """Generate random joint configuration within limits"""
         logger.debug("🎲 Generating random joint configuration")
         
-        joint_config = []
-        joint_names = [
-            'shoulder_pan_joint',
-            'shoulder_lift_joint',
-            'elbow_joint', 
-            'wrist_1_joint',
-            'wrist_2_joint',
-            'wrist_3_joint'
+        # Use same ranges as episode_randomizer.py
+        joint_config = [
+            np.random.uniform(-1.0, 1.0),      # shoulder_pan_joint
+            np.random.uniform(-1.2, 0.2),      # shoulder_lift_joint
+            np.random.uniform(-2.5, -0.5),     # elbow_joint
+            np.random.uniform(-2.0, 2.0),      # wrist_1_joint
+            np.random.uniform(-2.0, 2.0),      # wrist_2_joint
+            np.random.uniform(-3.14, 3.14),    # wrist_3_joint
         ]
-        
-        for joint_name in joint_names:
-            min_val, max_val = self.config.joint_limits[joint_name]
-            joint_config.append(np.random.uniform(min_val, max_val))
         
         logger.debug(f"🔧 Random joint configuration: {joint_config}")
         return joint_config
@@ -380,11 +376,153 @@ class ManipulatorEnvironmentSimple:
         logger.debug(f"🔧 Setting joint configuration: {joint_positions}")
         
         try:
-            # This would use the set_model_configuration service
-            # Implementation depends on your specific Gazebo setup
-            logger.debug("✅ Joint configuration set (placeholder)")
+            # Use the set_model_configuration service to set joint positions
+            from gazebo_msgs.srv import SetModelConfiguration
+            from gazebo_msgs.msg import ModelState
+            
+            # Wait for service to be available
+            rospy.wait_for_service('/gazebo/set_model_configuration', timeout=5)
+            set_model_config = rospy.ServiceProxy('/gazebo/set_model_configuration', SetModelConfiguration)
+            
+            # Joint names for UR5e manipulator
+            joint_names = [
+                'shoulder_pan_joint',
+                'shoulder_lift_joint', 
+                'elbow_joint',
+                'wrist_1_joint',
+                'wrist_2_joint',
+                'wrist_3_joint'
+            ]
+            
+            # Call service to set joint configuration
+            response = set_model_config(
+                model_name='manipulator',
+                urdf_param_name='robot_description',
+                joint_names=joint_names,
+                joint_positions=joint_positions
+            )
+            
+            if response.success:
+                logger.debug("✅ Joint configuration set successfully")
+            else:
+                logger.warning(f"⚠️ Joint configuration set failed: {response.status_message}")
+                
         except Exception as e:
             logger.error(f"❌ Failed to set joint configuration: {e}")
+            # Don't raise exception, just log the error and continue
+    
+    def _spawn_target_object(self, target_position: List[float]):
+        """Spawn or update target object in Gazebo"""
+        logger.info(f"🎯 Spawning target object at: {target_position}")
+        
+        try:
+            from gazebo_msgs.srv import SpawnModel, DeleteModel
+            from geometry_msgs.msg import Pose
+            
+            # Delete existing target if it exists
+            try:
+                rospy.wait_for_service('/gazebo/delete_model', timeout=5)
+                delete_model = rospy.ServiceProxy('/gazebo/delete_model', DeleteModel)
+                delete_response = delete_model('coke_can')
+                logger.info("🗑️ Deleted existing target object")
+                rospy.sleep(1.0)  # Wait for deletion to complete
+            except Exception as e:
+                logger.debug(f"Target object deletion failed (may not exist): {e}")
+            
+            # Spawn new target object
+            try:
+                rospy.wait_for_service('/gazebo/spawn_sdf_model', timeout=5)
+                spawn_model = rospy.ServiceProxy('/gazebo/spawn_sdf_model', SpawnModel)
+                
+                # Get SDF path from ROS parameter or use default
+                sdf_path = rospy.get_param('/coke_can_sdf_path', '/home/bouri/roboset/simple_manipulator_ws/src/simple_manipulator/models/coke_can.sdf')
+                logger.info(f"📁 Using SDF file: {sdf_path}")
+                
+                # Check if SDF file exists
+                import os
+                if not os.path.exists(sdf_path):
+                    logger.error(f"❌ SDF file not found: {sdf_path}")
+                    # Use inline SDF as fallback
+                    sdf_xml = '''<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="coke_can">
+    <static>false</static>
+    <link name="link">
+      <pose>0 0 0 0 0 0</pose>
+      <inertial>
+        <mass>0.33</mass>
+        <inertia>
+          <ixx>0.0001</ixx>
+          <iyy>0.0001</iyy>
+          <izz>0.0001</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+      <collision name="collision">
+        <geometry>
+          <cylinder>
+            <radius>0.033</radius>
+            <length>0.12</length>
+          </cylinder>
+        </geometry>
+      </collision>
+      <visual name="visual">
+        <geometry>
+          <cylinder>
+            <radius>0.033</radius>
+            <length>0.12</length>
+          </cylinder>
+        </geometry>
+        <material>
+          <ambient>0.8 0.2 0.2 1</ambient>
+          <diffuse>0.8 0.2 0.2 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>'''
+                    logger.info("📄 Using inline SDF as fallback")
+                else:
+                    # Read SDF file
+                    with open(sdf_path, 'r') as f:
+                        sdf_xml = f.read()
+                    logger.info("📄 Read SDF file successfully")
+                
+                # Create pose
+                pose = Pose()
+                pose.position.x = target_position[0]
+                pose.position.y = target_position[1]
+                pose.position.z = target_position[2]
+                pose.orientation.w = 1.0  # No rotation
+                
+                logger.info(f"📍 Target pose: x={pose.position.x:.3f}, y={pose.position.y:.3f}, z={pose.position.z:.3f}")
+                
+                # Spawn model
+                response = spawn_model(
+                    model_name='coke_can',
+                    model_xml=sdf_xml,
+                    robot_namespace='/',
+                    initial_pose=pose,
+                    reference_frame='world'
+                )
+                
+                if response.success:
+                    logger.info("✅ Target object spawned successfully!")
+                    # Update target pose for observation
+                    self.target_pose.position.x = target_position[0]
+                    self.target_pose.position.y = target_position[1]
+                    self.target_pose.position.z = target_position[2]
+                else:
+                    logger.error(f"❌ Target object spawn failed: {response.status_message}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to spawn target object: {e}")
+                
+        except Exception as e:
+            logger.error(f"❌ Target object spawning failed: {e}")
+            # Don't raise exception, just log the error and continue
     
     def _validate_action(self, action: np.ndarray) -> bool:
         """Validate action before execution"""
@@ -446,9 +584,10 @@ class ManipulatorEnvironmentSimple:
             # Joint velocities (6D) 
             joint_velocities = np.array(self.joint_states.velocity[:6])
             
-            # End-effector position (3D) - simplified estimation
-            # In a real implementation, this would come from TF or forward kinematics
-            end_effector_pos = np.array([0.0, 0.0, 0.0])  # Placeholder
+            # End-effector position (3D) - simplified forward kinematics approximation
+            # This is a rough approximation for UR5e manipulator
+            # In a real implementation, this would come from TF or proper forward kinematics
+            end_effector_pos = self._estimate_end_effector_position(joint_positions)
             
             # Target position (3D)
             target_pos = np.array([
@@ -468,6 +607,35 @@ class ManipulatorEnvironmentSimple:
         logger.debug(f"👁️ Observation shape: {observation.shape}")
         return observation
     
+    def _estimate_end_effector_position(self, joint_positions: np.ndarray) -> np.ndarray:
+        """Estimate end-effector position using simplified forward kinematics"""
+        # This is a very simplified approximation for UR5e manipulator
+        # In a real implementation, you would use proper DH parameters or TF
+        
+        # Extract joint angles
+        q1, q2, q3, q4, q5, q6 = joint_positions
+        
+        # UR5e link lengths (approximate)
+        d1 = 0.1625  # Base to shoulder
+        a2 = 0.425   # Shoulder to elbow
+        a3 = 0.392   # Elbow to wrist
+        d4 = 0.1333  # Wrist offset
+        d5 = 0.0997  # Wrist to flange
+        d6 = 0.0996  # Flange to end-effector
+        
+        # Simplified forward kinematics (ignoring some joints for approximation)
+        # This is a very rough approximation - in practice you'd use proper DH parameters
+        x = a2 * np.cos(q1) * np.cos(q2) + a3 * np.cos(q1) * np.cos(q2 + q3)
+        y = a2 * np.sin(q1) * np.cos(q2) + a3 * np.sin(q1) * np.cos(q2 + q3)
+        z = d1 + a2 * np.sin(q2) + a3 * np.sin(q2 + q3)
+        
+        # Add some noise to make it more realistic
+        noise = np.random.normal(0, 0.01, 3)
+        end_effector_pos = np.array([x, y, z]) + noise
+        
+        logger.debug(f"🤖 Estimated end-effector position: {end_effector_pos}")
+        return end_effector_pos
+    
     def _calculate_reward(self, action: np.ndarray) -> Tuple[float, Dict]:
         """Calculate reward based on accuracy, speed, and energy efficiency"""
         logger.debug("💰 Calculating reward")
@@ -484,10 +652,10 @@ class ManipulatorEnvironmentSimple:
         accuracy_reward = -distance_to_target * self.config.accuracy_weight
         logger.debug(f"🎯 Accuracy reward: {accuracy_reward:.4f} (distance: {distance_to_target:.4f})")
         
-        # Calculate speed reward (second priority)
+        # Calculate speed reward (second priority) - encourage finishing quickly
         if self.current_step < self.config.max_episode_steps:
-            remaining_steps = self.config.max_episode_steps - self.current_step
-            speed_reward = remaining_steps * self.config.speed_weight
+            # Penalty for each step taken (encourage finishing quickly)
+            speed_reward = -self.current_step * self.config.speed_weight
         else:
             speed_reward = 0.0
         logger.debug(f"⚡ Speed reward: {speed_reward:.4f}")
@@ -595,3 +763,4 @@ def test_environment():
 
 if __name__ == "__main__":
     test_environment()
+

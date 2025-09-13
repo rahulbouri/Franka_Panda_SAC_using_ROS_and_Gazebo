@@ -83,6 +83,10 @@ class PrioritizedReplayBuffer:
         
         logger.info("✅ Prioritized Replay Buffer initialized successfully")
     
+    def __len__(self):
+        """Return the current size of the buffer"""
+        return self.size
+    
     def add(self, 
             state: np.ndarray, 
             action: np.ndarray, 
@@ -395,3 +399,4 @@ def test_replay_buffer():
 
 if __name__ == "__main__":
     test_replay_buffer()
+

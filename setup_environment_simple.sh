@@ -88,3 +88,4 @@ echo "1. Run: source rl_env/bin/activate"
 echo "2. Run: python3 test_phase1.py"
 echo "3. If ROS issues occur, run: source /opt/ros/noetic/setup.bash"
 echo "4. Run: ./launch_phase1_training.sh"
+
