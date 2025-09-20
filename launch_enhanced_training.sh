@@ -81,3 +81,4 @@ trap cleanup EXIT
 
 echo "Press Ctrl+C to exit and cleanup"
 wait
+
