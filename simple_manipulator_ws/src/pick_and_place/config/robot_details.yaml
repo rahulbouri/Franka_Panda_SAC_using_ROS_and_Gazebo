@@ -1,0 +1,5 @@
+# Robot details for Franka Panda
+arm_id: panda
+robot_ip: sim
+use_gripper: true
+m_ee: 0.76

@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<launch>
+  <!-- SAC Pick-and-Place Training Launch File -->
+  
+  <!-- Arguments -->
+  <arg name="load_gripper" default="true"/>
+  <arg name="use_custom_action_servers" default="true"/>
+  <arg name="ns" default="panda_simulator"/>
+  <arg name="arm_id" default="panda"/>
+  <arg name="world" default="$(find pick_and_place)/worlds/pick_and_place.world"/>
+
+  <!-- Set robot parameters -->
+  <rosparam command="load" file="$(find pick_and_place)/config/robot_details.yaml"/>
+  <param name="robot_description" command="$(find xacro)/xacro --inorder $(find franka_description)/robots/panda/panda.urdf.xacro load_gripper:=$(arg load_gripper) gazebo:=true"/>
+
+  <param name="/arm/root_name" value="panda_link0" />
+  <param if="$(arg load_gripper)" name="/arm/tip_name" value="panda_hand" />
+  <param unless="$(arg load_gripper)" name="/arm/tip_name" value="panda_link8" />
+
+  <param if="$(arg load_gripper)" name="/franka_gripper/robot_ip" value="sim" />
+
+  <param if="$(arg load_gripper)" name="/arm/gravity_tip_name" value="panda_hand" />
+  <param unless="$(arg load_gripper)" name="/arm/gravity_tip_name" value="panda_link8" />
+
+  <!-- Gazebo simulation -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+      <arg name="gui" value="true"/>
+      <arg name="world_name" value="$(arg world)"/>
+      <arg name="debug" value="false"/>
+      <arg name="verbose" value="false"/>
+      <arg name="paused" value="false"/>
+      <arg name="respawn_gazebo" value="false"/>
+      <arg name="use_sim_time" value="true"/>
+      <arg name="headless" value="false"/>
+  </include>
+
+  <!-- Spawn robot -->
+  <node name="robot_description" pkg="gazebo_ros" type="spawn_model" 
+        args="-param robot_description -urdf -model panda 
+              -J panda::panda_joint1 0.000
+              -J panda::panda_joint2 -0.785
+              -J panda::panda_joint3 0.0
+              -J panda::panda_joint4 -2.356
+              -J panda::panda_joint5 0.0
+              -J panda::panda_joint6 1.57
+              -J panda::panda_joint7 0.785"/>
+
+  <!-- Create coordinate frames -->
+  <node pkg="tf" type="static_transform_publisher" name="base_to_link0" 
+        args="0 0 0 0 0 0 1 base panda_link0 100" />
+  <node pkg="tf" type="static_transform_publisher" name="world_to_base" 
+        args="0 0 0 0 0 0 1 world base 100" />
+
+  <!-- Load franka_gazebo configuration -->
+  <rosparam file="$(find franka_gazebo)/config/franka_hw_sim.yaml" subst_value="true" />
+  <rosparam file="$(find franka_gazebo)/config/sim_controllers.yaml" subst_value="true" />
+
+  <!-- Spawn ROS controllers -->
+  <!-- Optional gripper spawner disabled to avoid initialization errors in sim -->
+  <!-- <node pkg="controller_manager" type="spawner" name="panda_gripper_spawner"
+        if="$(arg load_gripper)" args="franka_gripper" respawn="false" /> -->
+
+  <node pkg="controller_manager" type="spawner" name="panda_controller_spawner"
+        respawn="false" output="screen"
+        args="--wait-for initialized franka_state_controller position_joint_trajectory_controller" />
+
+  <!-- Robot state publisher -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher" />
+  <node name="joint_state_publisher" type="joint_state_publisher" pkg="joint_state_publisher">
+    <rosparam param="source_list">[franka_state_controller/joint_states, franka_gripper/joint_states]</rosparam>
+    <param name="rate" value="30"/>
+  </node>
+
+  <!-- Perception module -->
+  <node name="perception_module" pkg="pick_and_place" type="perception_module.py" output="screen"/>
+
+  <!-- SAC Training (uncomment to start training) -->
+  <!-- <node name="sac_trainer" pkg="pick_and_place" type="sac_pick_place_trainer.py" output="screen"/> -->
+
+</launch>
