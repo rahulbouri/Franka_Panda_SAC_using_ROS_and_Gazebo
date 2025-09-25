@@ -108,11 +108,11 @@ Typical outputs:
 - Episode length to completion: typically near cap when failing; shorter on successful trials
 
 Training reward curve (jagged, long-horizon training):
-![Training Reward Curve](sac_timestep_jagged.png)
+![Training Reward Curve](docs/media/sac_timestep_jagged.png)
 
 ## Visual Demos
 Gazebo environment overview:
-![Gazebo Pick-and-Place Overview](pick_and_place_overview.png)
+![Gazebo Pick-and-Place Overview](docs/media/pick_and_place_overview.png)
 
 
 ## Citation / Credits
