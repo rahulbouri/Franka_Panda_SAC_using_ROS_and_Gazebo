@@ -1,174 +1,120 @@
-# Manipulator RL Environment
+# Pick-and-Place Manipulation with Online SAC in Gazebo
 
 ## Overview
-This workspace contains a simplified manipulator environment for RL training with constraint-aware joint control.
+End-to-end system to train a Soft Actor-Critic (SAC) policy for robotic pick-and-place in the Gazebo simulator. The pipeline runs online in simulation: ROS nodes launch the Franka Panda, spawn objects/bins, publish detections, and the SAC trainer learns from live rollouts.
 
-## Essential Files
+- Robot: Franka Emika Panda (sim)
+- Simulator: Gazebo + ROS Noetic
+- Task: Color-based pick-and-place into matching bins
+- Learning: Online SAC with replay buffer
 
-### 🚀 Launch Files
-- **`launch_environment.sh`** - Main launch script for Gazebo environment
-- **`simple_manipulator_ws/`** - Catkin workspace with manipulator package
+## Project Goal
+Train a robust, online RL policy that perceives objects, controls the 7-DoF arm, and completes pick-and-place reliably in a realistic Gazebo world. This showcases full-stack robotics skills across simulation, perception, control, and reinforcement learning.
 
-### 🤖 Robot Description
-- **`simple_manipulator_ws/src/simple_manipulator/urdf/manipulator.urdf`** - Robot URDF
-- **`simple_manipulator_ws/src/simple_manipulator/world/training_world.world`** - Gazebo world
-- **`simple_manipulator_ws/src/simple_manipulator/launch/training_env.launch`** - ROS launch file
-
-### 🎮 Control Scripts
-- **`interactive_joint_control.py`** - Interactive joint control with constraint awareness
-- **`monitor_joint_states.py`** - Real-time joint state monitoring
-- **`test_joint_control.py`** - Basic joint control testing
-
-### 🧠 RL Environment
-- **`rl_constraint_environment.py`** - RL environment with constraint handling
-- **`constraint_aware_controller.py`** - Constraint-aware ROS controller
-- **`lagrangian_constraint_integration.py`** - LNN with embedded constraints
-
-## Quick Start
-
-### 1. Launch Environment
-```bash
-# Make scripts executable
-chmod +x *.py *.sh
-
-# Launch Gazebo environment
-./launch_environment.sh
-```
-
-### 2. Monitor Joint States
-```bash
-# In a new terminal
-source /opt/ros/noetic/setup.bash
-python3 monitor_joint_states.py
-```
-
-### 3. Control Joints Interactively
-```bash
-# In another terminal
-source /opt/ros/noetic/setup.bash
-python3 interactive_joint_control.py
-```
-
-## Interactive Control Commands
-
-### Available Commands:
-- **`s`** - Show current status
-- **`m <joint_name> <effort> <duration>`** - Move single joint
-- **`a <effort1> <effort2> <effort3> <effort4> <effort5> <effort6> <duration>`** - Move all joints
-- **`d`** - Demo sequence
-- **`q`** - Quit
-
-### Available Joints:
-1. `shoulder_pan_joint`
-2. `shoulder_lift_joint`
-3. `elbow_joint`
-4. `wrist_1_joint`
-5. `wrist_2_joint`
-6. `wrist_3_joint`
-
-### Example Commands:
-```bash
-# Move shoulder pan joint with 50 Nm effort for 3 seconds
-m shoulder_pan_joint 50.0 3.0
-
-# Move all joints with specified efforts
-a 50.0 -30.0 20.0 10.0 -15.0 5.0 3.0
-
-# Show current status
-s
-
-# Run demo sequence
-d
-```
-
-## Constraint Awareness
-
-The system includes joint limit awareness with:
-- **Barrier functions** for smooth constraint enforcement
-- **Effort clamping** to prevent physical limit violations
-- **Real-time constraint monitoring** with violation warnings
-- **Adaptive control** that respects joint limits
-
-## Joint Limits
-
-| Joint | Position Range (rad) | Max Effort (Nm) |
-|-------|---------------------|-----------------|
-| shoulder_pan_joint | [-6.28, 6.28] | 150.0 |
-| shoulder_lift_joint | [-6.28, 6.28] | 150.0 |
-| elbow_joint | [-3.14, 3.14] | 150.0 |
-| wrist_1_joint | [-6.28, 6.28] | 28.0 |
-| wrist_2_joint | [-6.28, 6.28] | 28.0 |
-| wrist_3_joint | [-6.28, 6.28] | 28.0 |
-
-## RL Training
-
-For RL policy training, use:
-```bash
-python3 rl_constraint_environment.py
-```
-
-The RL environment includes:
-- Constraint-aware reward function
-- Joint limit enforcement
-- Real-time constraint monitoring
-- Integration with Lagrangian Neural Networks
-
-## Troubleshooting
-
-### Gazebo Not Starting
-```bash
-# Check if Gazebo is running
-pgrep -f "gzserver"
-
-# Unpause physics if needed
-rosservice call /gazebo/unpause_physics
-```
-
-### Joint States Not Updating
-```bash
-# Check ROS topics
-rostopic list | grep manipulator
-rostopic echo /manipulator/joint_states
-```
-
-### Constraint Violations
-The system will automatically:
-- Apply barrier function corrections
-- Clamp efforts to joint limits
-- Display constraint violation warnings
-- Prevent unsafe movements
-
-## File Structure
-
+## Repository Structure
 ```
 /home/bouri/roboset/
-├── launch_environment.sh          # Main launch script
-├── interactive_joint_control.py   # Interactive control
-├── monitor_joint_states.py        # Joint state monitoring
-├── test_joint_control.py          # Basic testing
-├── rl_constraint_environment.py   # RL environment
-├── constraint_aware_controller.py # Constraint-aware controller
-├── lagrangian_constraint_integration.py # LNN integration
-├── simple_manipulator_ws/         # Catkin workspace
-│   └── src/simple_manipulator/    # Manipulator package
-│       ├── urdf/manipulator.urdf  # Robot description
-│       ├── world/training_world.world # Gazebo world
-│       └── launch/training_env.launch # ROS launch
-└── README.md                      # This file
+├── simple_manipulator_ws/ (catkin workspace)
+│   └── src/pick_and_place/
+│       ├── launch/
+│       │   ├── panda_world.launch           # Launch Gazebo world + Panda
+│       │   └── sac_training.launch          # World + perception + (optional) trainer
+│       ├── worlds/pick_and_place.world      # World: table, bins, blocks, camera
+│       ├── scripts/
+│       │   ├── perception_module.py         # Publishes DetectedObjectsStamped
+│       │   ├── ros_controller.py            # Joint-space control + gripper + attacher
+│       │   ├── pick_place_sac_env.py        # RL environment wrapper
+│       │   └── sac_pick_place_trainer.py    # Online SAC trainer
+│       ├── msg/DetectedObject*.msg          # Perception messages
+│       └── CMakeLists.txt, package.xml
+└── README.md                                # This file
 ```
 
-## Next Steps
+## Setup
+- OS: Ubuntu 20.04 (ROS Noetic) or WSL2 Ubuntu 20.04 with GUI forwarding
+- Dependencies:
+  - ROS Noetic desktop-full
+  - Gazebo (comes with ROS Noetic)
+  - Python 3.8+, numpy, torch, opencv-python, cv-bridge, image-geometry
+  - Franka description/gazebo packages: `franka_description`, `franka_gazebo`
 
-1. **Test Environment**: Launch Gazebo and verify manipulator appears
-2. **Test Control**: Use interactive control to move joints
-3. **Verify Constraints**: Check that joint limits are respected
-4. **RL Training**: Use RL environment for policy training
-5. **Customize**: Modify reward functions and constraints as needed
+### 1) Set up ROS and workspace
+```bash
+# ROS
+sudo apt update
+sudo apt install -y ros-noetic-desktop-full ros-noetic-cv-bridge ros-noetic-image-geometry \
+  ros-noetic-gazebo-ros ros-noetic-gazebo-plugins ros-noetic-robot-state-publisher \
+  ros-noetic-joint-state-publisher ros-noetic-control-msgs ros-noetic-trajectory-msgs \
+  ros-noetic-controller-manager ros-noetic-tf ros-noetic-franka-description ros-noetic-franka-gazebo
 
-## Support
+# Python deps
+python3 -m pip install --user numpy torch opencv-python
 
-For issues or questions:
-1. Check ROS topics: `rostopic list`
-2. Check joint states: `rostopic echo /manipulator/joint_states`
-3. Check Gazebo: `gzclient` (if GUI available)
-4. Review logs: `rosnode info <node_name>`
+# Build catkin workspace
+source /opt/ros/noetic/setup.bash
+cd /home/bouri/roboset/simple_manipulator_ws
+catkin_make
+source devel/setup.bash
+```
+
+### 2) Verify environment variables (add to ~/.bashrc)
+```bash
+echo 'source /opt/ros/noetic/setup.bash' >> ~/.bashrc
+echo 'source /home/bouri/roboset/simple_manipulator_ws/devel/setup.bash' >> ~/.bashrc
+source ~/.bashrc
+```
+
+## Launch Gazebo World
+Launch the world with the Panda and scene objects.
+```bash
+roslaunch pick_and_place panda_world.launch
+```
+This brings up Gazebo with:
+- Workbench and bins
+- Colored blocks on the table
+- Kinect camera (for perception)
+- Panda robot with controllers
+
+If you prefer to also spawn perception and see topics, use:
+```bash
+roslaunch pick_and_place sac_training.launch
+```
+Note: the trainer node is commented by default in `sac_training.launch`. You’ll run it manually below to control training runs and logging.
+
+## Start Online Training
+In a new terminal (after sourcing ROS and workspace):
+```bash
+rosrun pick_and_place sac_pick_place_trainer.py
+```
+Training flow:
+- The `PickPlaceSACEnvironment` subscribes to joint states and detections, and commands joint targets through `ros_controller.py`.
+- `sac_pick_place_trainer.py` collects online rollouts, learns with SAC, and periodically saves checkpoints.
+
+Typical outputs:
+- Logs: episodic reward, step reward components, state machine transitions
+- Checkpoints: `pick_place_sac_episode_XXX.pth`, `pick_place_sac_final.pth`
+
+## Monitoring & Debugging
+- Topics: `rostopic list | grep -E "franka|object|joint|gazebo"`
+- Joint states: `rostopic echo /franka_state_controller/joint_states`
+- Perception stream: `rostopic echo /object_detection`
+- Gazebo: ensure link attacher plugin is loaded by world (see `worlds/pick_and_place.world`).
+
+## Results
+- Task success rate (eval over multiple seeds): 30%
+- Training duration: 20,000 episodes
+- Max episode steps: 500
+- Average reward (last 100 episodes): modest, plateauing with high variance
+- Episode length to completion: typically near cap when failing; shorter on successful trials
+
+Training reward curve (jagged, long-horizon training):
+![Training Reward Curve](sac_timestep_jagged.png)
+
+## Visual Demos
+Gazebo environment overview:
+![Gazebo Pick-and-Place Overview](pick_and_place_overview.png)
+
+
+## Citation / Credits
+- World and task design adapted from prior pick-and-place examples; Panda models from `franka_description` and `franka_gazebo`.
+- RL implementation based on standard SAC, integrated for online ROS+Gazebo.
